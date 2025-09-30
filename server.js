@@ -7,6 +7,7 @@ const registerUserRoutes = require('./routes/registerUserRoutes');
 const loginRoutes = require('./routes/loginRoutes');
 const adminRegistrationRoutes = require('./routes/adminRegistrationRoutes');
 const reminderRoutes = require('./routes/reminderRoutes'); 
+const asistenciaRoutes = require("./routes/asistenciaRoutes");
 
 dotenv.config();
 const app = express();
@@ -36,6 +37,7 @@ app.use('/api/login', loginRoutes);
 //app.use('/api/admin', adminRegistrationRoutes);
 app.use("/api/info-user", require("./routes/infoUserRoutes"));
 //app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api/asistencia", asistenciaRoutes);
 
 // ✅ Ruta no encontrada (404)
 app.use((req, res, next) => {
