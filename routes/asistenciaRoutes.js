@@ -1,19 +1,20 @@
-// routes/asistenciaRoutes.js
 const express = require("express");
 const { PDFDocument, StandardFonts } = require("pdf-lib");
 const fs = require("fs");
 const path = require("path");
+const Asistencia = require("../models/Asistencia"); // 👈 tu modelo de asistencia
 
 const router = express.Router();
 
+// 📌 Crear una asistencia y guardar PDF
 router.post("/", async (req, res) => {
   try {
     const data = req.body || {};
 
-    // Plantilla PDF (asegúrate de tener /templates/F-GH-010.pdf)
+    // Plantilla PDF
     const templatePath = path.join(__dirname, "../templates/F-GH-010.pdf");
     if (!fs.existsSync(templatePath)) {
-      return res.status(500).json({ error: "Plantilla PDF no encontrada en /templates/F-GH-010.pdf" });
+      return res.status(500).json({ error: "Plantilla PDF no encontrada" });
     }
     const pdfBytes = fs.readFileSync(templatePath);
 
@@ -24,7 +25,6 @@ router.post("/", async (req, res) => {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     // -------------------- CABECERA --------------------
-    // Ajusta X/Y si quieres mover finamente
     page.drawText(`${data.fecha || ""}`, { x: 170, y: 651, size: 12, font });
     page.drawText(`${data.tema || ""}`, { x: 170, y: 633, size: 12, font });
     page.drawText(`${data.responsable || ""}`, { x: 170, y: 615, size: 12, font });
@@ -36,43 +36,35 @@ router.post("/", async (req, res) => {
 
     // -------------------- ASISTENTES --------------------
     if (Array.isArray(data.asistentes)) {
-      const baseY = 505; // punto de inicio (ajústalo si hace falta)
-      const step = 18;   // separación vertical entre filas
+      const baseY = 505;
+      const step = 18;
 
       for (let i = 0; i < data.asistentes.length; i++) {
         const a = data.asistentes[i] || {};
         const y = baseY - i * step;
 
-        // columnas: número | nombre | cargo | firma
         page.drawText(a.nombre || "", { x: 120, y, size: 10, font });
         page.drawText(a.cargo || "", { x: 300, y, size: 10, font });
 
-        // Firma: si viene base64 la incrustamos; si no, dibujamos línea
         if (a.firma && typeof a.firma === "string" && a.firma.startsWith("data:image")) {
           try {
-            // extraer tipo y base64
             const match = a.firma.match(/^data:(image\/\w+);base64,(.+)$/);
             if (!match) throw new Error("Formato de firma inválido");
 
-            const mime = match[1]; // ejemplo 'image/png'
+            const mime = match[1];
             const base64 = match[2];
             const imgBytes = Buffer.from(base64, "base64");
 
             let embeddedImage;
             if (mime === "image/png") {
               embeddedImage = await pdfDoc.embedPng(imgBytes);
-            } else if (mime === "image/jpeg" || mime === "image/jpg") {
-              embeddedImage = await pdfDoc.embedJpg(imgBytes);
             } else {
-              // intentar png por si acaso
-              embeddedImage = await pdfDoc.embedPng(imgBytes);
+              embeddedImage = await pdfDoc.embedJpg(imgBytes);
             }
 
-            // mantén la relación de aspecto
-            const sigWidth = 90; // ancho de la firma en PDF (ajustable)
+            const sigWidth = 90;
             const sigHeight = (embeddedImage.height / embeddedImage.width) * sigWidth || 30;
 
-            // dibujar imagen: centramos verticalmente en la fila
             page.drawImage(embeddedImage, {
               x: 450,
               y: y - sigHeight / 2 + 5,
@@ -80,25 +72,73 @@ router.post("/", async (req, res) => {
               height: sigHeight,
             });
           } catch (err) {
-            console.error(`Error incrustando firma en fila ${i + 1}:`, err);
-            // fallback: dibujar línea si falla incrustar
+            console.error(`⚠️ Error incrustando firma en fila ${i + 1}:`, err);
             page.drawLine({ start: { x: 450, y: y - 2 }, end: { x: 550, y: y - 2 }, thickness: 1 });
           }
         } else {
-          // sin firma → dibujar línea
           page.drawLine({ start: { x: 450, y: y - 2 }, end: { x: 550, y: y - 2 }, thickness: 1 });
         }
       }
     }
 
+    // Generar PDF final
     const finalPdfBytes = await pdfDoc.save();
+    const pdfBuffer = Buffer.from(finalPdfBytes); // ✅ convertir a Buffer
 
+    // Guardar en Mongo
+    const nuevaAsistencia = new Asistencia({
+      fecha: data.fecha,
+      tema: data.tema,
+      responsable: data.responsable,
+      cargo: data.cargo,
+      modalidad: data.modalidad,
+      sede: data.sede,
+      horaInicio: data.horaInicio,
+      horaFin: data.horaFin,
+      asistentes: data.asistentes,
+      pdf: {
+        data: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    });
+
+    await nuevaAsistencia.save();
+
+    // Responder con el PDF
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=Lista_Asistencia.pdf");
-    return res.send(Buffer.from(finalPdfBytes));
+    res.send(pdfBuffer);
   } catch (err) {
     console.error("❌ Error generando PDF:", err);
-    return res.status(500).json({ error: "Error generando PDF" });
+    res.status(500).json({ error: "Error generando PDF" });
+  }
+});
+
+// 📌 Obtener todas las asistencias (sin PDF completo)
+router.get("/", async (req, res) => {
+  try {
+    const asistencias = await Asistencia.find({}, "fecha tema responsable sede createdAt");
+    res.json(asistencias);
+  } catch (err) {
+    console.error("❌ Error obteniendo asistencias:", err);
+    res.status(500).json({ error: "Error al obtener asistencias" });
+  }
+});
+
+// 📌 Descargar un PDF por ID
+router.get("/:id", async (req, res) => {
+  try {
+    const asistencia = await Asistencia.findById(req.params.id);
+    if (!asistencia || !asistencia.pdf || !asistencia.pdf.data) {
+      return res.status(404).json({ error: "PDF no encontrado" });
+    }
+
+    res.setHeader("Content-Type", asistencia.pdf.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename=Asistencia_${asistencia._id}.pdf`);
+    res.send(asistencia.pdf.data);
+  } catch (err) {
+    console.error("❌ Error descargando PDF:", err);
+    res.status(500).json({ error: "Error al descargar PDF" });
   }
 });
 
