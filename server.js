@@ -34,7 +34,7 @@ app.get("/", (req, res) => {
 // ✅ Rutas principales
 app.use('/api/register', registerUserRoutes);
 app.use('/api/login', loginRoutes);
-//app.use('/api/admin', adminRegistrationRoutes);
+app.use('/api/register-admin', adminRegistrationRoutes);
 app.use("/api/info-user", require("./routes/infoUserRoutes"));
 //app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/asistencia", asistenciaRoutes);

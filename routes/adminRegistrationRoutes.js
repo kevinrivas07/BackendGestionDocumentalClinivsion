@@ -1,8 +1,8 @@
-/*const express = require('express');
+const express = require('express');
 const router = express.Router();
-const adminRegistration = require('../controllers/adminRegistrationController'); 
+const { adminRegistration } = require('../controllers/adminRegistrationController'); // ✅ destructuring
 
 // Ruta para registrar un administrador
-router.post('/register-admin', adminRegistration);
+router.post('/', adminRegistration);
 
-module.exports = router;*/
+module.exports = router;
