@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 
 const asistenciaSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User", // 👈 referencia al modelo de usuarios
+  },
   fecha: String,
   tema: String,
   responsable: String,
@@ -17,7 +21,7 @@ const asistenciaSchema = new mongoose.Schema({
     },
   ],
   pdf: {
-    data: Buffer,            // 👈 importante
+    data: Buffer,
     contentType: String,
   },
 }, { timestamps: true });
