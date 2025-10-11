@@ -2,26 +2,26 @@ const express = require("express");
 const { PDFDocument, StandardFonts } = require("pdf-lib");
 const fs = require("fs");
 const path = require("path");
-const Asistencia = require("../models/Asistencia"); // 👈 tu modelo de asistencia
+const Asistencia = require("../models/Asistencia");
+const authMiddleware = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
 // 📌 Crear una asistencia y guardar PDF
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const data = req.body || {};
 
-    // Plantilla PDF
+    // Plantilla PDF base
     const templatePath = path.join(__dirname, "../templates/F-GH-010.pdf");
     if (!fs.existsSync(templatePath)) {
       return res.status(500).json({ error: "Plantilla PDF no encontrada" });
     }
-    const pdfBytes = fs.readFileSync(templatePath);
 
+    const pdfBytes = fs.readFileSync(templatePath);
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const pages = pdfDoc.getPages();
     const page = pages[0];
-
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     // -------------------- CABECERA --------------------
@@ -46,6 +46,7 @@ router.post("/", async (req, res) => {
         page.drawText(a.nombre || "", { x: 120, y, size: 10, font });
         page.drawText(a.cargo || "", { x: 300, y, size: 10, font });
 
+        // Firma
         if (a.firma && typeof a.firma === "string" && a.firma.startsWith("data:image")) {
           try {
             const match = a.firma.match(/^data:(image\/\w+);base64,(.+)$/);
@@ -73,7 +74,6 @@ router.post("/", async (req, res) => {
             });
           } catch (err) {
             console.error(`⚠️ Error incrustando firma en fila ${i + 1}:`, err);
-            page.drawLine({ start: { x: 450, y: y - 2 }, end: { x: 550, y: y - 2 }, thickness: 1 });
           }
         } else {
           page.drawLine({ start: { x: 450, y: y - 2 }, end: { x: 550, y: y - 2 }, thickness: 1 });
@@ -83,11 +83,11 @@ router.post("/", async (req, res) => {
 
     // Generar PDF final
     const finalPdfBytes = await pdfDoc.save();
-    const pdfBuffer = Buffer.from(finalPdfBytes); // ✅ convertir a Buffer
+    const pdfBuffer = Buffer.from(finalPdfBytes);
 
-    // Guardar en Mongo
+    // Guardar asistencia en Mongo
     const nuevaAsistencia = new Asistencia({
-      fecha: data.fecha,
+      fecha: data.fecha || new Date(),
       tema: data.tema,
       responsable: data.responsable,
       cargo: data.cargo,
@@ -100,11 +100,11 @@ router.post("/", async (req, res) => {
         data: pdfBuffer,
         contentType: "application/pdf",
       },
+      creadoPor: req.user?.id || null, // ✅ se guarda el usuario correctamente
     });
 
     await nuevaAsistencia.save();
 
-    // Responder con el PDF
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=Lista_Asistencia.pdf");
     res.send(pdfBuffer);
@@ -114,10 +114,13 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 📌 Obtener todas las asistencias (sin PDF completo)
+// 📌 Obtener todas las asistencias (con nombre del creador)
 router.get("/", async (req, res) => {
   try {
-    const asistencias = await Asistencia.find({}, "fecha tema responsable sede createdAt");
+    const asistencias = await Asistencia.find()
+      .populate("creadoPor", "username email role")
+      .select("fecha tema responsable sede creadoPor");
+
     res.json(asistencias);
   } catch (err) {
     console.error("❌ Error obteniendo asistencias:", err);
@@ -125,8 +128,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📌 Descargar un PDF por ID
-router.get("/:id", async (req, res) => {
+// 📌 Descargar PDF por ID
+router.get("/:id/pdf", async (req, res) => {
   try {
     const asistencia = await Asistencia.findById(req.params.id);
     if (!asistencia || !asistencia.pdf || !asistencia.pdf.data) {

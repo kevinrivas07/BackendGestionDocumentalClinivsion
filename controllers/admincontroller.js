@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const Asistencia = require('../models/Asistencia');
 const bcrypt = require('bcryptjs');
+const fs = require("fs");
+const path = require("path");
 
 // ✅ Obtener todos los usuarios
 const getUsers = async (req, res) => {
@@ -35,6 +37,23 @@ const createUser = async (req, res) => {
   }
 };
 
+// ✅ Actualizar usuario
+const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedUser = await User.findByIdAndUpdate(id, req.body, { new: true });
+
+    if (!updatedUser) {
+      return res.status(404).json({ msg: "Usuario no encontrado" });
+    }
+
+    res.json({ msg: "Usuario actualizado correctamente", user: updatedUser });
+  } catch (err) {
+    console.error("❌ Error al actualizar usuario:", err);
+    res.status(500).json({ msg: "Error al actualizar usuario", error: err });
+  }
+};
+
 // ✅ Eliminar usuario
 const deleteUser = async (req, res) => {
   try {
@@ -50,7 +69,7 @@ const deleteUser = async (req, res) => {
 // ✅ Obtener todas las asistencias (solo admin)
 const getAllAsistencias = async (req, res) => {
   try {
-    const asistencias = await Asistencia.find().populate('userId', 'username email');
+    const asistencias = await Asistencia.find().populate('creadoPor', 'username email');
 
     if (!Array.isArray(asistencias)) {
       return res.status(500).json({ msg: 'Formato inválido de asistencias' });
@@ -63,9 +82,34 @@ const getAllAsistencias = async (req, res) => {
   }
 };
 
+// ✅ Listar todos los PDFs de asistencias
+const getAllPdfs = async (req, res) => {
+  try {
+    const pdfDir = path.join(__dirname, "../uploads/pdfs");
+
+    if (!fs.existsSync(pdfDir)) {
+      return res.status(404).json({ msg: "No existe la carpeta de PDFs" });
+    }
+
+    const files = fs.readdirSync(pdfDir).filter(file => file.endsWith(".pdf"));
+    
+    const pdfs = files.map(file => ({
+      name: file,
+      url: `${process.env.BASE_URL || "http://localhost:5000"}/uploads/pdfs/${file}`,
+    }));
+
+    res.json(pdfs);
+  } catch (error) {
+    console.error("❌ Error al listar PDFs:", error);
+    res.status(500).json({ msg: "Error al listar los PDFs" });
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
+  updateUser,
   deleteUser,
   getAllAsistencias,
+  getAllPdfs,
 };

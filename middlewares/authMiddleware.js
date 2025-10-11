@@ -17,7 +17,7 @@ const authMiddleware = (req, res, next) => {
       return res.status(401).json({ msg: 'Token sin userId' });
     }
 
-    // ✅ Guardar el objeto completo del usuario autenticado
+    // ✅ Guardar el usuario autenticado
     req.user = {
       id: verified.userId,
       role: verified.role,
