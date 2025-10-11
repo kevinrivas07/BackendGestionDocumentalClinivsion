@@ -15,6 +15,7 @@ const reminderRoutes = require('./routes/reminderRoutes');
 const asistenciaRoutes = require("./routes/asistenciaRoutes");
 const adminRoutes = require('./routes/adminRoutes');
 const infoUserRoutes = require("./routes/infoUserRoutes");
+const dotacionRoutes = require("./routes/dotacionRoutes");
 
 // Middleware
 app.use(cors());
@@ -40,6 +41,7 @@ app.use('/api/register-admin', adminRegistrationRoutes);
 app.use("/api/info-user", infoUserRoutes);
 app.use("/api/asistencia", asistenciaRoutes);
 app.use('/api/admin', adminRoutes);
+app.use("/api/dotaciones", dotacionRoutes);
 
 // ✅ Carpeta estática para PDFs
 app.use('/uploads/pdfs', express.static(path.join(__dirname, 'uploads/pdfs')));
