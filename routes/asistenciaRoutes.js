@@ -12,7 +12,6 @@ router.post("/", authMiddleware, async (req, res) => {
   try {
     const data = req.body || {};
 
-    // Plantilla PDF base
     const templatePath = path.join(__dirname, "../templates/F-GH-010.pdf");
     if (!fs.existsSync(templatePath)) {
       return res.status(500).json({ error: "Plantilla PDF no encontrada" });
@@ -20,8 +19,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     const pdfBytes = fs.readFileSync(templatePath);
     const pdfDoc = await PDFDocument.load(pdfBytes);
-    const pages = pdfDoc.getPages();
-    const page = pages[0];
+    const page = pdfDoc.getPages()[0];
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     // -------------------- CABECERA --------------------
@@ -55,13 +53,10 @@ router.post("/", authMiddleware, async (req, res) => {
             const mime = match[1];
             const base64 = match[2];
             const imgBytes = Buffer.from(base64, "base64");
-
-            let embeddedImage;
-            if (mime === "image/png") {
-              embeddedImage = await pdfDoc.embedPng(imgBytes);
-            } else {
-              embeddedImage = await pdfDoc.embedJpg(imgBytes);
-            }
+            const embeddedImage =
+              mime === "image/png"
+                ? await pdfDoc.embedPng(imgBytes)
+                : await pdfDoc.embedJpg(imgBytes);
 
             const sigWidth = 90;
             const sigHeight = (embeddedImage.height / embeddedImage.width) * sigWidth || 30;
@@ -81,11 +76,10 @@ router.post("/", authMiddleware, async (req, res) => {
       }
     }
 
-    // Generar PDF final
+    // Guardar PDF y documento en MongoDB
     const finalPdfBytes = await pdfDoc.save();
     const pdfBuffer = Buffer.from(finalPdfBytes);
 
-    // Guardar asistencia en Mongo
     const nuevaAsistencia = new Asistencia({
       fecha: data.fecha || new Date(),
       tema: data.tema,
@@ -100,7 +94,7 @@ router.post("/", authMiddleware, async (req, res) => {
         data: pdfBuffer,
         contentType: "application/pdf",
       },
-      creadoPor: req.user?.id || null, // ✅ se guarda el usuario correctamente
+      creadoPor: req.user?.id || null,
     });
 
     await nuevaAsistencia.save();
@@ -114,12 +108,23 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// 📌 Obtener todas las asistencias (con nombre del creador)
-router.get("/", async (req, res) => {
+
+// 📌 Obtener asistencias (según rol)
+router.get("/", authMiddleware, async (req, res) => {
   try {
-    const asistencias = await Asistencia.find()
-      .populate("creadoPor", "username email role")
-      .select("fecha tema responsable sede creadoPor");
+    let asistencias;
+
+    if (req.user.role === "admin") {
+      // 🧑‍💼 El admin ve todas las asistencias
+      asistencias = await Asistencia.find()
+        .populate("creadoPor", "username email role")
+        .select("fecha tema responsable sede creadoPor");
+    } else {
+      // 👤 Usuario normal: solo las que él creó
+      asistencias = await Asistencia.find({ creadoPor: req.user.id })
+        .populate("creadoPor", "username email role")
+        .select("fecha tema responsable sede creadoPor");
+    }
 
     res.json(asistencias);
   } catch (err) {
@@ -128,11 +133,12 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📌 Descargar PDF por ID
+
+// 📄 Descargar PDF
 router.get("/:id/pdf", async (req, res) => {
   try {
     const asistencia = await Asistencia.findById(req.params.id);
-    if (!asistencia || !asistencia.pdf || !asistencia.pdf.data) {
+    if (!asistencia || !asistencia.pdf?.data) {
       return res.status(404).json({ error: "PDF no encontrado" });
     }
 

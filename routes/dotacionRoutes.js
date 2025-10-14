@@ -119,18 +119,30 @@ if (Array.isArray(data.elementos)) {
     }
 });
 
-// 📂 Obtener todas las dotaciones
-router.get("/", async (req, res) => {
-    try {
-        const dotaciones = await Dotacion.find()
-            .populate("creadoPor", "username email")
-            .select("fecha nombre cedula cargo elementos creadoPor");
-        res.json(dotaciones);
-    } catch (err) {
-        console.error("❌ Error al obtener dotaciones:", err);
-        res.status(500).json({ error: "Error al obtener dotaciones" });
+// 📂 Obtener dotaciones (según rol del usuario)
+router.get("/", authMiddleware, async (req, res) => {
+  try {
+    let dotaciones;
+
+    if (req.user.role === "admin") {
+      // 🧑‍💼 El admin ve todas las dotaciones
+      dotaciones = await Dotacion.find()
+        .populate("creadoPor", "username email role")
+        .select("fecha nombre cedula cargo creadoPor");
+    } else {
+      // 👤 Usuario normal: solo las suyas
+      dotaciones = await Dotacion.find({ creadoPor: req.user.id })
+        .populate("creadoPor", "username email role")
+        .select("fecha nombre cedula cargo creadoPor");
     }
+
+    res.json(dotaciones);
+  } catch (err) {
+    console.error("❌ Error al obtener dotaciones:", err);
+    res.status(500).json({ error: "Error al obtener dotaciones" });
+  }
 });
+
 
 // 📄 Descargar PDF
 router.get("/:id/pdf", async (req, res) => {
