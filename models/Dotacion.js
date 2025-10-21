@@ -2,7 +2,7 @@
 const mongoose = require("mongoose");
 
 const DotacionSchema = new mongoose.Schema({
-  fecha: { type: Date, required: true },
+  fecha: { type: String, required: true },
   nombre: { type: String, required: true },
   cedula: { type: String, required: true },
   cargo: { type: String },
